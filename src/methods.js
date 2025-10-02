@@ -1,17 +1,14 @@
 // import from src modules folder
-
 import DataList from './datalist.js';
-
-// get listed inputs from local storage
 
 export default class display {
   static getToDoListFromStorage = () => {
     let toDoLists;
-
-    if (JSON.parse(localStorage.getItem('LocalDataList')) === null) {
+    try {
+      toDoLists = JSON.parse(localStorage.getItem('LocalDataList')) || [];
+    } catch (error) {
+      this.handleError(error);
       toDoLists = [];
-    } else {
-      toDoLists = JSON.parse(localStorage.getItem('LocalDataList'));
     }
     return toDoLists;
   };
@@ -51,7 +48,8 @@ export default class display {
       });
 
       this.addListToStorage(toDoLists);
-      this.showLists();
+      const currentFilter = localStorage.getItem('currentFilter') || 'all';
+      this.showFilteredLists(currentFilter);
     };
 
     static removeToDoListBtn = () => {
@@ -64,7 +62,8 @@ export default class display {
           id = 0;
         }
         this.deleteListData(id);
-        this.showLists();
+        const currentFilter = localStorage.getItem('currentFilter') || 'all';
+        this.showFilteredLists(currentFilter);
       }));
     };
 
@@ -76,48 +75,65 @@ export default class display {
         <li><input class="checkbox" id="${index}" type="checkbox" ${statusCheck}></li> 
         <li><input id="LIST${index}" type="text" class="text${statusCompleted}" value="${description}" readonly></li>
         <li class="remove-edit">
-        <button class="edit_list_btn" id="${index}"><i class="fa fa-ellipsis-v icon"></i></button>
-        <button class="remove_btn" id="${index}"><i class="fa fa-trash-can icon"></i></button>
+        <button class="edit_list_btn" id="${index}" title="Edit task"><i class="fa fa-edit icon"></i></button>
+        <button class="remove_btn" id="${index}" title="Delete task"><i class="fa fa-trash icon"></i></button>
         </li>
       `;
       return ul;
     }
 
-    // show listed tasks
-    static showLists = () => {
-      const toDoLists = this.getToDoListFromStorage();
-      document.querySelector('.toDoListContainer').innerHTML = '';
-      toDoLists.forEach((item) => {
-        let statusCheck;
-        let statusCompleted;
-        if (item.completed === true) {
-          statusCheck = 'checked';
-          statusCompleted = 'completed';
-        } else {
-          statusCheck = '';
-          statusCompleted = '';
-        }
-        document.querySelector('.toDoListContainer').appendChild(this.toDoListsHtml(item, statusCheck, statusCompleted));
-      });
+    // show filtered tasks
+  static showFilteredLists = (filter = 'all') => {
+    const toDoLists = this.getToDoListFromStorage();
+    const container = document.querySelector('.toDoListContainer');
+    container.innerHTML = '';
+    
+    // Filter tasks based on the selected filter
+    const filteredLists = filter === 'active' ? 
+      toDoLists.filter(item => !item.completed) :
+      filter === 'completed' ?
+      toDoLists.filter(item => item.completed) :
+      toDoLists;
 
-      this.removeToDoListBtn();
-      this.editListBtnEvent();
-      this.updateListBtnEvent();
+    // Update task counts
+    const counts = {
+      all: toDoLists.length,
+      active: toDoLists.filter(item => !item.completed).length,
+      completed: toDoLists.filter(item => item.completed).length
+    };
+    
+    this.updateFilterCounts(counts);
 
-      const event = new Event('listUpdated');
-      document.dispatchEvent(event);
+    // Render filtered tasks
+    filteredLists.forEach((item) => {
+      const statusCheck = item.completed ? 'checked' : '';
+      const statusCompleted = item.completed ? 'completed' : '';
+      container.appendChild(this.toDoListsHtml(item, statusCheck, statusCompleted));
+    });
+
+    this.removeToDoListBtn();
+    this.editListBtnEvent();
+    this.updateListBtnEvent();
+
+    const event = new Event('listUpdated');
+    document.dispatchEvent(event);
     };
 
     // add a task to a list
     static addLists = (description) => {
       const toDoLists = this.getToDoListFromStorage();
       const index = toDoLists.length + 1;
-      const newtask = new DataList(description, false, index);
-
-      toDoLists.push(newtask);
+      const newList = {
+        description,
+        completed: false,
+        index,
+        editing: false
+      };
+      toDoLists.push(newList);
       this.addListToStorage(toDoLists);
-      this.showLists();
-    }
+      const currentFilter = localStorage.getItem('currentFilter') || 'all';
+      this.showFilteredLists(currentFilter);
+    };
 
     // update to do list
     static updateListBtnEvent = () => {
@@ -140,37 +156,126 @@ export default class display {
       }));
     }
 
-    // edit list
-    static editListBtnEvent = () => {
-      let previousList = null;
-      document.querySelectorAll('.edit_list_btn').forEach((button) => button.addEventListener('click', (event) => {
+  // edit list
+  static editListBtnEvent = () => {
+    let previousList = null;
+    let currentEditingId = null;
+    
+    document.querySelectorAll('.edit_list_btn').forEach((button) => {
+      button.addEventListener('click', (event) => {
         event.preventDefault();
-        const inputListId = 'LIST';
-        const ListIdSelected = event.currentTarget.id;
-        let listID;
+        const editButton = event.currentTarget;
+        const taskId = editButton.id;
+        currentEditingId = taskId;
+        
+        const listID = `LIST${taskId}`;
+        const input = document.getElementById(listID);
+        const listItem = editButton.closest('li');
+        const ulItem = editButton.closest('ul');
 
-        if (!ListIdSelected.includes('LIST')) {
-          listID = inputListId.concat(ListIdSelected);
-        } else {
-          listID = ListIdSelected;
+        // Reset previous edit state if exists
+        if (previousList) {
+          const prevInput = previousList.querySelector('input[type="text"]');
+          if (prevInput) {
+            prevInput.setAttribute('readonly', 'readonly');
+            prevInput.style.background = '';
+          }
+          previousList.style.background = '';
         }
 
-        if (previousList !== null) {
-          previousList.getElementById(listID).removeAttribute('readonly');
-        }
-
-        const listItem = event.target.closest('li');
-        previousList = listItem;
-        const ulItem = event.target.closest('ul');
-
+        // Set new edit state
+        previousList = ulItem;
         listItem.style.background = 'rgb(230, 230, 184)';
         ulItem.style.background = 'rgb(230, 230, 184)';
-
-        document.getElementById(listID).removeAttribute('readonly');
-        document.getElementById(listID).focus();
-        document.getElementById(listID).style.background = 'rgb(230, 230, 184)';
+        
+        if (input) {
+          input.removeAttribute('readonly');
+          input.focus();
+          input.style.background = 'rgb(230, 230, 184)';
+          
+          // Remove any existing event listeners
+          const newInput = input.cloneNode(true);
+          input.parentNode.replaceChild(newInput, input);
+          
+          // Add keyboard event listeners with stored ID
+          newInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (newInput.value.trim()) {
+                this.ListInputUpdate(newInput.value.trim(), currentEditingId - 1);
+                newInput.setAttribute('readonly', 'readonly');
+                newInput.style.background = '';
+                listItem.querySelector('.edit_list_btn').style.display = 'block';
+                listItem.querySelector('.remove_btn').style.display = 'none';
+              }
+            } else if (e.key === 'Escape') {
+              newInput.value = newInput.defaultValue;
+              newInput.setAttribute('readonly', 'readonly');
+              newInput.style.background = '';
+              listItem.style.background = '';
+              ulItem.style.background = '';
+              listItem.querySelector('.edit_list_btn').style.display = 'block';
+              listItem.querySelector('.remove_btn').style.display = 'none';
+            }
+          });
+        }
+        
         listItem.querySelector('.edit_list_btn').style.display = 'none';
         listItem.querySelector('.remove_btn').style.display = 'block';
-      }));
+      });
+    });
+  };
+
+  static toggleEdit = (id) => {
+    const toDoLists = this.getToDoListFromStorage();
+    toDoLists[id].editing = !toDoLists[id].editing;
+    this.addListToStorage(toDoLists);
+    const currentFilter = localStorage.getItem('currentFilter') || 'all';
+    this.showFilteredLists(currentFilter);
+  };
+
+  // Improved filter implementation with persistence and counts
+  static filterTasks = (filter) => {
+    try {
+      const toDoLists = this.getToDoListFromStorage();
+      localStorage.setItem('currentFilter', filter);
+      
+      const filteredTasks = filter === 'active' ? 
+        toDoLists.filter(item => !item.completed) :
+        filter === 'completed' ?
+        toDoLists.filter(item => item.completed) :
+        toDoLists;
+      
+      const counts = {
+        all: toDoLists.length,
+        active: toDoLists.filter(item => !item.completed).length,
+        completed: toDoLists.filter(item => item.completed).length
+      };
+      
+      this.updateFilterCounts(counts);
+      return filteredTasks;
+    } catch (error) {
+      this.handleError(error);
+      return [];
+    }
+  };
+
+  static updateFilterCounts = (counts) => {
+    Object.entries(counts).forEach(([filter, count]) => {
+      const btn = document.querySelector(`[data-filter="${filter}"]`);
+      if (btn) {
+        btn.dataset.count = count;
+        btn.setAttribute('aria-label', `${filter} tasks (${count})`);
+      }
+    });
+  };
+
+  // Performance optimization
+  static debounce = (fn, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn.apply(this, args), delay);
     };
+  };
 }

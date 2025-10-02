@@ -5,7 +5,8 @@ export default class Interactive {
       const toDoLists = display.getToDoListFromStorage();
       toDoLists[id].completed = statusCheck;
       display.addListToStorage(toDoLists);
-      display.showLists();
+      const currentFilter = localStorage.getItem('currentFilter') || 'all';
+      display.showFilteredLists(currentFilter);
     }
 
     // checkbox status
@@ -35,6 +36,7 @@ export default class Interactive {
       toDoLists = toDoLists.filter((item) => item.completed !== true);
       display.newIndexNum(toDoLists);
       display.addListToStorage(toDoLists);
-      display.showLists();
+      const currentFilter = localStorage.getItem('currentFilter') || 'all';
+      display.showFilteredLists(currentFilter);
     }
 }
